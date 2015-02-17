@@ -5,12 +5,13 @@ using System.Linq;
 using log4net.Core;
 using Newtonsoft.Json;
 using System.Dynamic;
+using log4net.Util;
 
 namespace log4net.loggly
 {
 	public class LogglyFormatter : ILogglyFormatter
 	{
-		private Process _currentProcess;
+		private readonly Process _currentProcess;
 
 		public LogglyFormatter()
 		{
@@ -52,7 +53,7 @@ namespace log4net.loggly
             _loggingInfo.loggerName = loggingEvent.LoggerName;
 
             //handling messages
-            object _objInfo = null;
+            object _objInfo;
             string _message = GetMessageAndObjectInfo(loggingEvent, out _objInfo);
 
             if (_message != string.Empty)
@@ -79,19 +80,18 @@ namespace log4net.loggly
             }
 
             //handling threadcontext properties
-            string[] _threadContextProperties = ThreadContext.Properties.GetKeys();
-            if (_threadContextProperties.Count() > 0)
+            var _threadContextProperties = ThreadContext.Properties.GetKeys();
+            if (_threadContextProperties != null && _threadContextProperties.Any())
             {
                 var p = _loggingInfo as IDictionary<string, object>;
                 foreach (string key in _threadContextProperties)
                 {
-                    //handling threadstack
-                    if (ThreadContext.Properties[key].GetType() ==
-                        typeof(log4net.Util.ThreadContextStack))
+	                //handling threadstack
+	                var stack = ThreadContext.Properties[key] as ThreadContextStack;
+	                if (stack != null)
                     {
                         string[] stackArray;
-                        if (IncludeThreadStackValues(ThreadContext.Properties[key]
-                            as log4net.Util.ThreadContextStack, out stackArray))
+                        if (IncludeThreadStackValues(stack, out stackArray))
                         {
                             p[key] = stackArray;
                         }
@@ -135,20 +135,21 @@ namespace log4net.loggly
             return exceptionInfo;
         }
 
-        /// <summary>
-        /// Returns a string type message if it is not a custom object,
-        /// otherwise returns custom object details
-        /// </summary>
-        /// <param name="loggingEvent"></param>
-        /// <returns></returns>
-        private string GetMessageAndObjectInfo(LoggingEvent loggingEvent, out object objInfo)
+		/// <summary>
+		/// Returns a string type message if it is not a custom object,
+		/// otherwise returns custom object details
+		/// </summary>
+		/// <param name="loggingEvent"></param>
+		/// <param name="objInfo"></param>
+		/// <returns></returns>
+		private string GetMessageAndObjectInfo(LoggingEvent loggingEvent, out object objInfo)
         {
-            string message = string.Empty;
+            var message = string.Empty;
             objInfo = null;
 
             if (loggingEvent.MessageObject != null)
             {
-                if (loggingEvent.MessageObject.GetType() == typeof(string)
+                if (loggingEvent.MessageObject is string
                     //if it is sent by using InfoFormat method then treat it as a string message
                 || loggingEvent.MessageObject.GetType().FullName == "log4net.Util.SystemStringFormat"
                 || loggingEvent.MessageObject.GetType().FullName.Contains("StringFormatFormattedMessage"))
@@ -176,18 +177,18 @@ namespace log4net.loggly
         /// <param name="stack"></param>
         /// <param name="includeStackKey"></param>
         /// <returns></returns>
-        private bool IncludeThreadStackValues(log4net.Util.ThreadContextStack stack,
+        private bool IncludeThreadStackValues(ThreadContextStack stack,
             out string[] stackArray)
         {
             if (stack != null && stack.Count > 0)
             {
                 stackArray = new string[stack.Count];
-                for (int n = stack.Count - 1; n >= 0; n--)
+                for (var n = stack.Count - 1; n >= 0; n--)
                 {
                     stackArray[n] = stack.Pop();
                 }
 
-                foreach (string stackValue in stackArray)
+                foreach (var stackValue in stackArray)
                 {
                     stack.Push(stackValue);
                 }
