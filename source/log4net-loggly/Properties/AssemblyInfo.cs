@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("log4net-loggly")]
+[assembly: AssemblyTitle("rumble.log4net-loggly")]
 [assembly: AssemblyDescription("Log4net client for Loggly Gen 2")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Microsoft")]
