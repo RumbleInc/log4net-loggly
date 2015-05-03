@@ -14,26 +14,31 @@ namespace log4net.loggly
 	{
 		private readonly Process _currentProcess;
 
-		public LogglyFormatter()
-		{
-			_currentProcess = Process.GetCurrentProcess();
-		}
+        public LogglyFormatter()
+        {
+            _currentProcess = Process.GetCurrentProcess();
+        }
 
-		public virtual void AppendAdditionalLoggingInformation(ILogglyAppenderConfig config, LoggingEvent loggingEvent)
-		{
-		}
+        public virtual void AppendAdditionalLoggingInformation(ILogglyAppenderConfig config, LoggingEvent loggingEvent)
+        {
+        }
 
-	    public virtual string ToJson(LoggingEvent loggingEvent)
-	    {
+        public virtual string ToJson(LoggingEvent loggingEvent)
+        {
             return PreParse(loggingEvent);
-	    }
+        }
 
         public virtual string ToJson(IEnumerable<LoggingEvent> loggingEvents)
-		{
+        {
             return JsonConvert.SerializeObject(loggingEvents.Select(PreParse),new JsonSerializerSettings(){
                 ReferenceLoopHandling = ReferenceLoopHandling.Ignore
             });
-		}
+        }
+
+        public virtual string ToJson(string renderedLog, DateTime timeStamp)
+        {
+            return ParseRenderedLog(renderedLog, timeStamp);
+        }
 
         /// <summary>
         /// Formats the log event to various JSON fields that are to be shown in Loggly.
@@ -41,38 +46,38 @@ namespace log4net.loggly
         /// <param name="loggingEvent"></param>
         /// <returns></returns>
         private string PreParse(LoggingEvent loggingEvent)
-		{
+        {
             //formating base logging info
-            dynamic _loggingInfo = new ExpandoObject();
-            _loggingInfo.timestamp = loggingEvent.TimeStamp.ToString(@"yyyy-MM-ddTHH\:mm\:ss.fffzzz");
-            _loggingInfo.level = loggingEvent.Level.DisplayName;
-            _loggingInfo.hostName = Environment.MachineName;
-            _loggingInfo.process = _currentProcess.ProcessName;
-            _loggingInfo.threadName = loggingEvent.ThreadName;
-            _loggingInfo.loggerName = loggingEvent.LoggerName;
+            dynamic loggingInfo = new ExpandoObject();
+            loggingInfo.timestamp = loggingEvent.TimeStamp.ToString(@"yyyy-MM-ddTHH\:mm\:ss.fffzzz");
+            loggingInfo.level = loggingEvent.Level.DisplayName;
+            loggingInfo.hostName = Environment.MachineName;
+            loggingInfo.process = _currentProcess.ProcessName;
+            loggingInfo.threadName = loggingEvent.ThreadName;
+            loggingInfo.loggerName = loggingEvent.LoggerName;
 
             //handling messages
-            object _loggedObject = null;
-            string _message = GetMessageAndObjectInfo(loggingEvent, out _loggedObject);
+            object loggedObject;
+            var message = GetMessageAndObjectInfo(loggingEvent, out loggedObject);
 
-            if (_message != string.Empty)
+            if (message != string.Empty)
             {
-                _loggingInfo.message = _message;
+                loggingInfo.message = message;
             }
 
             //handling exceptions
-            dynamic _exceptionInfo = GetExceptionInfo(loggingEvent);
-            if (_exceptionInfo != null)
+            dynamic exceptionInfo = GetExceptionInfo(loggingEvent);
+            if (exceptionInfo != null)
             {
-                _loggingInfo.exception = _exceptionInfo;
+                loggingInfo.exception = exceptionInfo;
             }
 
             //handling threadcontext properties
-            var _threadContextProperties = ThreadContext.Properties.GetKeys();
-            if (_threadContextProperties != null && _threadContextProperties.Any())
+            var threadContextProperties = ThreadContext.Properties.GetKeys();
+            if (threadContextProperties != null && threadContextProperties.Any())
             {
-                var p = _loggingInfo as IDictionary<string, object>;
-                foreach (string key in _threadContextProperties)
+                var p = (IDictionary<string, object>) loggingInfo;
+                foreach (var key in threadContextProperties)
                 {
 	                //handling threadstack
 	                var stack = ThreadContext.Properties[key] as ThreadContextStack;
@@ -92,8 +97,8 @@ namespace log4net.loggly
             }
 
             //converting event info to Json string
-            var _loggingEventJSON = JsonConvert.SerializeObject(_loggingInfo,
-            new JsonSerializerSettings()
+            var loggingEventJson = JsonConvert.SerializeObject(loggingInfo,
+            new JsonSerializerSettings
             {
                 ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
             });
@@ -102,11 +107,11 @@ namespace log4net.loggly
             //if it is not null then convert it into JSON string
             //and concatenate to the _loggingEventJSON
 
-            if (_loggedObject != null)
+            if (loggedObject != null)
             {
                 //converting passed object to JSON string
 
-                var _loggedObjectJSON = JsonConvert.SerializeObject(_loggedObject,
+                var loggedObjectJson = JsonConvert.SerializeObject(loggedObject,
                 new JsonSerializerSettings()
                 {
                     PreserveReferencesHandling = PreserveReferencesHandling.Arrays,
@@ -116,19 +121,37 @@ namespace log4net.loggly
                 //concatenating _loggedObjectJSON with _loggingEventJSON
                 //http://james.newtonking.com/archive/2014/08/04/json-net-6-0-release-4-json-merge-dependency-injection
 
-                JObject jEvent = JObject.Parse(_loggingEventJSON);
-                JObject jObject = JObject.Parse(_loggedObjectJSON);
+                JObject jEvent = JObject.Parse(loggingEventJson);
+                var jObject = JObject.Parse(loggedObjectJson);
 
                 jEvent.Merge(jObject, new JsonMergeSettings
                 {
                     MergeArrayHandling = MergeArrayHandling.Union
                 });
 
-                _loggingEventJSON = jEvent.ToString();
+                loggingEventJson = jEvent.ToString();
             }
 
-            return _loggingEventJSON;
-		}
+            return loggingEventJson;
+        }
+
+        /// <summary>
+        /// Merged Rendered log and formatted timestamp in the single Json object
+        /// </summary>
+        /// <param name="log"></param>
+        /// <param name="timeStamp"></param>
+        /// <returns></returns>
+        private string ParseRenderedLog(string log, DateTime timeStamp)
+        {
+            dynamic loggingInfo = new ExpandoObject();
+            loggingInfo.message = log;
+            loggingInfo.timestamp = timeStamp.ToString(@"yyyy-MM-ddTHH\:mm\:ss.fffzzz");
+
+            //converting event info to Json string
+            var loggingEventJson = JsonConvert.SerializeObject(loggingInfo);
+
+            return loggingEventJson;
+        }
 
         /// <summary>
         /// Returns the exception information. Also takes care of the InnerException.  
@@ -138,7 +161,7 @@ namespace log4net.loggly
         private object GetExceptionInfo(LoggingEvent loggingEvent)
         {
             if (loggingEvent.ExceptionObject == null)
-                return null;
+            return null;
 
             dynamic exceptionInfo = new ExpandoObject();
             exceptionInfo.exceptionType = loggingEvent.ExceptionObject.GetType().FullName;
@@ -174,9 +197,9 @@ namespace log4net.loggly
             if (loggingEvent.MessageObject != null)
             {
                 if (loggingEvent.MessageObject is string
-                    //if it is sent by using InfoFormat method then treat it as a string message
-                || loggingEvent.MessageObject.GetType().FullName == "log4net.Util.SystemStringFormat"
-                || loggingEvent.MessageObject.GetType().FullName.Contains("StringFormatFormattedMessage"))
+                        //if it is sent by using InfoFormat method then treat it as a string message
+                        || loggingEvent.MessageObject.GetType().FullName == "log4net.Util.SystemStringFormat"
+                        || loggingEvent.MessageObject.GetType().FullName.Contains("StringFormatFormattedMessage"))
                 {
                     message = loggingEvent.MessageObject.ToString();
                 }
@@ -194,15 +217,15 @@ namespace log4net.loggly
             return message;
         }
 
-        /// <summary>
-        /// Returns whether to include stack array or not
-        /// Also outs the stack array if needed to include
-        /// </summary>
-        /// <param name="stack"></param>
-        /// <param name="includeStackKey"></param>
-        /// <returns></returns>
-        private bool IncludeThreadStackValues(ThreadContextStack stack,
-            out string[] stackArray)
+		/// <summary>
+		/// Returns whether to include stack array or not
+		/// Also outs the stack array if needed to include
+		/// </summary>
+		/// <param name="stack"></param>
+		/// <param name="stackArray"></param>
+		/// <returns></returns>
+		private bool IncludeThreadStackValues(ThreadContextStack stack,
+        out string[] stackArray)
         {
             if (stack != null && stack.Count > 0)
             {
@@ -223,6 +246,7 @@ namespace log4net.loggly
                 stackArray = null;
                 return false;
             }
+
         }
     }
 }
