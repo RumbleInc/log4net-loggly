@@ -13,7 +13,7 @@ namespace log4net_loggly_console
 
             var log = LogManager.GetLogger(typeof(Program));
 
-            Thread thread = Thread.CurrentThread;
+            var thread = Thread.CurrentThread;
             thread.Name = "Main Thread";
             ThreadContext.Properties["MainThreadContext"] = "MainThreadContextValue";
             log.Info("Thread test");
@@ -21,9 +21,9 @@ namespace log4net_loggly_console
             log.Warn("hmmm", new ApplicationException("app exception"));
             log.Info("yawn");
 
-            Thread newThread1 = new Thread(() =>
+            var newThread1 = new Thread(() =>
             {
-                Thread curntThread = Thread.CurrentThread;
+                var curntThread = Thread.CurrentThread;
                 curntThread.Name = "Inner thread 1";
                 ThreadContext.Properties["InnerThread1Context"] = "InnerThreadContext1Values";
 
